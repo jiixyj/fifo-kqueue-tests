@@ -443,6 +443,15 @@ coro2(Coro c, void *arg)
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE, 0);
 	PRINT_TESTRESULT;
 
+	if (write(fd, "", 1) != 1) {
+		errx(1, "write failed");
+	}
+
+	pollfd(&r, &r2, fd, kq, true, O_WRONLY, /**/
+	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE - 1, 0, /**/
+	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE - 1, 0);
+	PRINT_TESTRESULT;
+
 	(void)coro_transfer(c, /**/
 	    (void *)"reconnected reader should trigger notification");
 
