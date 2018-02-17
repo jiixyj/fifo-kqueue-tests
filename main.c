@@ -225,7 +225,7 @@ coro1(Coro c, void *arg)
 	PRINT_TESTRESULT;
 
 	(void)coro_transfer(c, /**/
-	    (void *)"new writer connected, POLLIN expected, a kevent with data 2");
+	    (void *)"writer wrote a byte, POLLIN expected, a kevent with data 2");
 
 
 	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
@@ -233,8 +233,10 @@ coro1(Coro c, void *arg)
 	    1, POLLIN, 1, EVFILT_READ, 2, 0);
 	PRINT_TESTRESULT;
 
-	fprintf(
-	    stderr, "test that read of length one retriggers EVFILT_READ\n");
+	fprintf(stderr, "writer closed connection\n");
+
+	fprintf(stderr,
+	    "now test that read of length one retriggers EVFILT_READ:\n");
 
 	if (read(fd, buf, 1) != 1) {
 		warnx("ERROR - read != 1");
@@ -246,7 +248,7 @@ coro1(Coro c, void *arg)
 	PRINT_TESTRESULT;
 
 	fprintf(stderr,
-	    "test that another read of length one retriggers EVFILT_READ\n");
+	    "test that another read of length one retriggers EVFILT_READ:\n");
 
 	if (read(fd, buf, sizeof(buf)) != 1) {
 		warnx("ERROR - read != 1");
@@ -258,7 +260,7 @@ coro1(Coro c, void *arg)
 	PRINT_TESTRESULT;
 
 	fprintf(stderr,
-	    "test that another read does not retrigger EVFILT_READ at EOF\n");
+	    "test that another read does not retrigger EVFILT_READ at EOF:\n");
 
 	if (read(fd, buf, sizeof(buf)) != 0) {
 		warnx("ERROR - read != 0");
