@@ -22,6 +22,7 @@ pollfd(
     /* two return values: first for the long running kqueue, one for newly
        connecting reader/writer. */
     int *pr, int *pr2,
+
     /* fifo fd, a long running kqueue and a flag to open(2) if a new
        reader/writer should be tested. */
     int fd, int kq, bool recursion, int recursion_open_flag,
@@ -115,8 +116,10 @@ pollfd(
 			err(1, "kqueue");
 		}
 
-		EV_SET(&kev2[0], fd2, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, NULL);
-		EV_SET(&kev2[1], fd2, EVFILT_WRITE, EV_ADD | EV_CLEAR, 0, 0, NULL);
+		EV_SET(&kev2[0], fd2, EVFILT_READ, /**/
+		    EV_ADD | EV_CLEAR, 0, 0, NULL);
+		EV_SET(&kev2[1], fd2, EVFILT_WRITE, /**/
+		    EV_ADD | EV_CLEAR, 0, 0, NULL);
 		if (kevent(kq2, kev2, 2, NULL, 0, NULL) < 0) {
 			err(1, "kevent");
 		}
@@ -139,12 +142,12 @@ pollfd(
 
 static int test_counter;
 
-#define PRINT_TESTRESULT                                         \
-	do {                                                     \
-		++test_counter;                                  \
+#define PRINT_TESTRESULT                                          \
+	do {                                                      \
+		++test_counter;                                   \
 		fprintf(stderr, "test %2d %s/%s\n", test_counter, \
-		    r < 0 ? "FAILED" : "SUCCESSFUL",             \
-		    r2 < 0 ? "FAILED" : "SUCCESSFUL");           \
+		    r < 0 ? "FAILED" : "SUCCESSFUL",              \
+		    r2 < 0 ? "FAILED" : "SUCCESSFUL");            \
 	} while (0);
 
 static void
