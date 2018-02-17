@@ -41,14 +41,17 @@ pollfd(
 	int r2 = 0;
 	struct pollfd pfd = { .fd = fd, /**/
 		.events = POLLIN | POLLPRI | POLLOUT };
+	bool is_in_recursion = !pr2;
+
+#define WARN_STR (is_in_recursion ? "new r/w" : "old r/w")
 
 	if (poll(&pfd, 1, 0) != expected_nr_poll_events) {
-		warnx("ERROR - poll failed");
+		warnx("ERROR - %s: poll failed", WARN_STR);
 		r = -1;
 	}
 	if (pfd.revents != expected_revents) {
-		warnx("ERROR - expected %d, got %d", expected_revents,
-		    pfd.revents);
+		warnx("ERROR - %s: expected %d, got %d", WARN_STR,
+		    expected_revents, pfd.revents);
 		r = -1;
 	}
 
@@ -74,26 +77,26 @@ pollfd(
 #endif
 
 		if ((int)kev[i].filter != expected_kq_filter) {
-			warnx("ERROR - expected_kq_filter %d, received %d",
-			    expected_kq_filter, (int)kev[i].filter);
+			warnx("ERROR - %s: expected_kq_filter %d, received %d",
+			    WARN_STR, expected_kq_filter, (int)kev[i].filter);
 			r = -1;
 		}
 		if ((int)kev[i].data != expected_kq_data) {
-			warnx("ERROR - expected_kq_data %d, received %d",
-			    expected_kq_data, (int)kev[i].data);
+			warnx("ERROR - %s: expected_kq_data %d, received %d",
+			    WARN_STR, expected_kq_data, (int)kev[i].data);
 			r = -1;
 		}
 		if ((int)kev[i].flags != (expected_kq_flags | EV_CLEAR)) {
-			warnx("ERROR - expected_kq_flags %x, received %x",
-			    (unsigned)(expected_kq_flags | EV_CLEAR),
+			warnx("ERROR - %s: expected_kq_flags %x, received %x",
+			    WARN_STR, (unsigned)(expected_kq_flags | EV_CLEAR),
 			    (unsigned)kev[i].flags);
 			r = -1;
 		}
 	}
 
 	if (n != expected_nr_kq_events) {
-		warnx("ERROR - expected_nr_kq_events %d, received %d",
-		    expected_nr_kq_events, n);
+		warnx("ERROR - %s: expected_nr_kq_events %d, received %d",
+		    WARN_STR, expected_nr_kq_events, n);
 		r = -1;
 	}
 
@@ -101,7 +104,6 @@ pollfd(
 		int fd2;
 		int kq2;
 		struct kevent kev2[2];
-		int dummy_ret;
 
 		fd2 = open(FIFONAME, recursion_open_flag | O_NONBLOCK);
 		if (fd2 < 0) {
@@ -119,7 +121,7 @@ pollfd(
 			err(1, "kevent");
 		}
 
-		pollfd(&r2, &dummy_ret, fd2, kq2, false, 0,
+		pollfd(&r2, NULL, fd2, kq2, false, 0,
 		    new_expected_nr_poll_events, new_expected_revents,
 		    new_expected_nr_kq_events, new_expected_kq_filter,
 		    new_expected_kq_data, new_expected_kq_flags, 0, 0, 0, 0, 0,
@@ -130,7 +132,9 @@ pollfd(
 	}
 
 	*pr = r;
-	*pr2 = r2;
+	if (!is_in_recursion) {
+		*pr2 = r2;
+	}
 }
 
 static int test_counter;
