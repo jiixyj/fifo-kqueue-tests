@@ -17,9 +17,18 @@
 #define PIPE_SIZE (16384)
 
 static int
-pollfd(int fd, int kq, int recursion_open_flag, int expected_nr_poll_events,
-    int expected_revents, int expected_nr_kq_events, int expected_kq_filter,
-    int expected_kq_data, int expected_kq_flags,
+pollfd(
+    /* fifo fd, a long running kqueue and a flag to open(2) if a new
+       reader/writer should be tested. */
+    int fd, int kq, int recursion_open_flag,
+
+    /* poll events which are expected */
+    int expected_nr_poll_events, int expected_revents,
+    /* kevents from long running kqueue which are expected */
+    int expected_nr_kq_events, int expected_kq_filter, int expected_kq_data,
+    int expected_kq_flags,
+
+    /* same as above, but for newly connected readers/writers */
     int new_expected_nr_poll_events, int new_expected_revents,
     int new_expected_nr_kq_events, int new_expected_kq_filter,
     int new_expected_kq_data, int new_expected_kq_flags)
