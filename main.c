@@ -1,6 +1,7 @@
 #include <sys/event.h>
 #include <sys/stat.h>
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,11 +17,14 @@
 #define FIFONAME "fifo.tmp"
 #define PIPE_SIZE (16384)
 
-static int
+static void
 pollfd(
+    /* two return values: first for the long running kqueue, one for newly
+       connecting reader/writer. */
+    int *pr, int *pr2,
     /* fifo fd, a long running kqueue and a flag to open(2) if a new
        reader/writer should be tested. */
-    int fd, int kq, int recursion_open_flag,
+    int fd, int kq, bool recursion, int recursion_open_flag,
 
     /* poll events which are expected */
     int expected_nr_poll_events, int expected_revents,
@@ -34,6 +38,7 @@ pollfd(
     int new_expected_kq_data, int new_expected_kq_flags)
 {
 	int r = 0;
+	int r2 = 0;
 	struct pollfd pfd = { .fd = fd, /**/
 		.events = POLLIN | POLLPRI | POLLOUT };
 
@@ -92,10 +97,11 @@ pollfd(
 		r = -1;
 	}
 
-	if (recursion_open_flag) {
+	if (recursion) {
 		int fd2;
 		int kq2;
 		struct kevent kev2[2];
+		int dummy_ret;
 
 		fd2 = open(FIFONAME, recursion_open_flag | O_NONBLOCK);
 		if (fd2 < 0) {
@@ -113,28 +119,28 @@ pollfd(
 			err(1, "kevent");
 		}
 
-		r |= pollfd(fd2, kq2, 0, new_expected_nr_poll_events,
-		    new_expected_revents, new_expected_nr_kq_events,
-		    new_expected_kq_filter, new_expected_kq_data,
-		    new_expected_kq_flags, 0, 0, 0, 0, 0, 0);
+		pollfd(&r2, &dummy_ret, fd2, kq2, false, 0,
+		    new_expected_nr_poll_events, new_expected_revents,
+		    new_expected_nr_kq_events, new_expected_kq_filter,
+		    new_expected_kq_data, new_expected_kq_flags, 0, 0, 0, 0, 0,
+		    0);
 
 		close(kq2);
 		close(fd2);
 	}
 
-	return (r);
+	*pr = r;
+	*pr2 = r2;
 }
 
 static int test_counter;
 
-#define PRINT_TESTRESULT                                                     \
-	do {                                                                 \
-		if (r < 0) {                                                 \
-			fprintf(stderr, "test %d FAILED\n", ++test_counter); \
-		} else {                                                     \
-			fprintf(                                             \
-			    stderr, "test %d SUCCESSFUL\n", ++test_counter); \
-		}                                                            \
+#define PRINT_TESTRESULT                                         \
+	do {                                                     \
+		++test_counter;                                  \
+		fprintf(stderr, "test %2d %s/%s\n", test_counter, \
+		    r < 0 ? "FAILED" : "SUCCESSFUL",             \
+		    r2 < 0 ? "FAILED" : "SUCCESSFUL");           \
 	} while (0);
 
 static void
@@ -143,7 +149,7 @@ coro1(Coro c, void *arg)
 	int fd;
 	int kq;
 	struct kevent kev[2];
-	int r;
+	int r, r2;
 	uint8_t buf[16];
 
 	(void)arg;
@@ -164,7 +170,7 @@ coro1(Coro c, void *arg)
 		err(1, "kevent");
 	}
 
-	r = pollfd(fd, kq, O_RDONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    0, 0, 0, 0, 0, 0, /**/
 	    0, 0, 0, 0, 0, 0);
 	PRINT_TESTRESULT;
@@ -173,7 +179,7 @@ coro1(Coro c, void *arg)
 	    (void *)"first reader opened");
 
 
-	r = pollfd(fd, kq, O_RDONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    0, 0, 0, 0, 0, 0, /**/
 	    0, 0, 0, 0, 0, 0);
 	PRINT_TESTRESULT;
@@ -182,7 +188,7 @@ coro1(Coro c, void *arg)
 	    (void *)"writer connected, poll still returns 0");
 
 
-	r = pollfd(fd, kq, O_RDONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN, 1, EVFILT_READ, 1, 0, /**/
 	    1, POLLIN, 1, EVFILT_READ, 1, 0);
 	PRINT_TESTRESULT;
@@ -191,7 +197,7 @@ coro1(Coro c, void *arg)
 	    (void *)"writer wrote first byte, POLLIN expected");
 
 
-	r = pollfd(fd, kq, O_RDONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN | POLLHUP, 1, EVFILT_READ, 1, EV_EOF, /**/
 	    1, POLLIN, 1, EVFILT_READ, 1, 0);
 	PRINT_TESTRESULT;
@@ -200,7 +206,7 @@ coro1(Coro c, void *arg)
 	    (void *)"writer closed, POLLIN|POLLHUP expected");
 
 
-	r = pollfd(fd, kq, O_RDONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN, 1, EVFILT_READ, 1, 0, /**/
 	    1, POLLIN, 1, EVFILT_READ, 1, 0);
 	PRINT_TESTRESULT;
@@ -209,7 +215,7 @@ coro1(Coro c, void *arg)
 	    (void *)"new writer connected, POLLIN expected, a kevent with data 1");
 
 
-	r = pollfd(fd, kq, O_RDONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN, 1, EVFILT_READ, 2, 0, /**/
 	    1, POLLIN, 1, EVFILT_READ, 2, 0);
 	PRINT_TESTRESULT;
@@ -218,7 +224,7 @@ coro1(Coro c, void *arg)
 	    (void *)"new writer connected, POLLIN expected, a kevent with data 2");
 
 
-	r = pollfd(fd, kq, O_RDONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN | POLLHUP, 1, EVFILT_READ, 2, EV_EOF, /**/
 	    1, POLLIN, 1, EVFILT_READ, 2, 0);
 	PRINT_TESTRESULT;
@@ -230,7 +236,7 @@ coro1(Coro c, void *arg)
 		warnx("ERROR - read != 1");
 	}
 
-	r = pollfd(fd, kq, O_RDONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN | POLLHUP, 1, EVFILT_READ, 1, EV_EOF, /**/
 	    1, POLLIN, 1, EVFILT_READ, 1, 0);
 	PRINT_TESTRESULT;
@@ -242,7 +248,7 @@ coro1(Coro c, void *arg)
 		warnx("ERROR - read != 1");
 	}
 
-	r = pollfd(fd, kq, O_RDONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN | POLLHUP, 1, EVFILT_READ, 0, EV_EOF, /**/
 	    0, 0, 0, 0, 0, 0);
 	PRINT_TESTRESULT;
@@ -254,7 +260,7 @@ coro1(Coro c, void *arg)
 		warnx("ERROR - read != 0");
 	}
 
-	r = pollfd(fd, kq, O_RDONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN | POLLHUP, 0, 0, 0, 0, /**/
 	    0, 0, 0, 0, 0, 0);
 	PRINT_TESTRESULT;
@@ -298,7 +304,7 @@ coro2(Coro c, void *arg)
 	int fd;
 	int kq;
 	struct kevent kev[2];
-	int r;
+	int r, r2;
 
 	(void)arg;
 
@@ -318,7 +324,7 @@ coro2(Coro c, void *arg)
 		err(1, "kevent");
 	}
 
-	r = pollfd(fd, kq, O_WRONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_WRONLY, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE, 0, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE, 0);
 	PRINT_TESTRESULT;
@@ -332,7 +338,7 @@ coro2(Coro c, void *arg)
 		errx(1, "write failed");
 	}
 
-	r = pollfd(fd, kq, O_WRONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_WRONLY, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE - 1, 0, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE - 1, 0);
 	PRINT_TESTRESULT;
@@ -363,7 +369,7 @@ coro2(Coro c, void *arg)
 		err(1, "kevent");
 	}
 
-	r = pollfd(fd, kq, O_WRONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_WRONLY, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE - 1, 0, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE - 1, 0);
 	PRINT_TESTRESULT;
@@ -376,7 +382,7 @@ coro2(Coro c, void *arg)
 		errx(1, "write failed");
 	}
 
-	r = pollfd(fd, kq, O_WRONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_WRONLY, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE - 2, 0, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE - 2, 0);
 	PRINT_TESTRESULT;
@@ -407,7 +413,7 @@ coro2(Coro c, void *arg)
 		err(1, "kevent");
 	}
 
-	r = pollfd(fd, kq, O_WRONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_WRONLY, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE, 0, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE, 0);
 	PRINT_TESTRESULT;
@@ -416,7 +422,10 @@ coro2(Coro c, void *arg)
 	    (void *)"writer reopened");
 
 
-	r = pollfd(fd, kq, 0, /**/
+	pollfd(&r, &r2, fd, kq,
+	    false, /* connecting as a new writer would fail,
+	            * as no readers are currently connected */
+	    0, /**/
 	    1, POLLHUP, 1, EVFILT_WRITE, 0, EV_EOF, /**/
 	    0, 0, 0, 0, 0, 0);
 	PRINT_TESTRESULT;
@@ -425,7 +434,7 @@ coro2(Coro c, void *arg)
 	    (void *)"get EOF when reader closes");
 
 
-	r = pollfd(fd, kq, O_WRONLY, /**/
+	pollfd(&r, &r2, fd, kq, true, O_WRONLY, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE, 0, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE, 0);
 	PRINT_TESTRESULT;
