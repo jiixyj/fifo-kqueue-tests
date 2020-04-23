@@ -435,7 +435,7 @@ coro2(Coro c, void *arg)
 	    false, /* connecting as a new writer would fail,
 	            * as no readers are currently connected */
 	    0, /**/
-	    1, POLLHUP, 1, EVFILT_WRITE, 0, EV_EOF, /**/
+	    1, POLLHUP, 1, EVFILT_WRITE, PIPE_SIZE, EV_EOF, /**/
 	    0, 0, 0, 0, 0, 0);
 	PRINT_TESTRESULT;
 
