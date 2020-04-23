@@ -185,7 +185,6 @@ coro1(Coro c, void *arg)
 	(void)coro_transfer(c, /**/
 	    (void *)"first reader opened");
 
-
 	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    0, 0, 0, 0, 0, 0, /**/
 	    0, 0, 0, 0, 0, 0);
@@ -193,7 +192,6 @@ coro1(Coro c, void *arg)
 
 	(void)coro_transfer(c, /**/
 	    (void *)"writer connected, poll still returns 0");
-
 
 	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN, 1, EVFILT_READ, 1, 0, /**/
@@ -203,7 +201,6 @@ coro1(Coro c, void *arg)
 	(void)coro_transfer(c, /**/
 	    (void *)"writer wrote first byte, POLLIN expected");
 
-
 	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN | POLLHUP, 1, EVFILT_READ, 1, EV_EOF, /**/
 	    1, POLLIN, 1, EVFILT_READ, 1, 0);
@@ -211,7 +208,6 @@ coro1(Coro c, void *arg)
 
 	(void)coro_transfer(c, /**/
 	    (void *)"writer closed, POLLIN|POLLHUP expected");
-
 
 	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN, 1, EVFILT_READ, 1, 0, /**/
@@ -221,7 +217,6 @@ coro1(Coro c, void *arg)
 	(void)coro_transfer(c, /**/
 	    (void *)"new writer connected, POLLIN expected, a kevent with data 1");
 
-
 	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN, 1, EVFILT_READ, 2, 0, /**/
 	    1, POLLIN, 1, EVFILT_READ, 2, 0);
@@ -229,7 +224,6 @@ coro1(Coro c, void *arg)
 
 	(void)coro_transfer(c, /**/
 	    (void *)"writer wrote a byte, POLLIN expected, a kevent with data 2");
-
 
 	pollfd(&r, &r2, fd, kq, true, O_RDONLY, /**/
 	    1, POLLIN | POLLHUP, 1, EVFILT_READ, 2, EV_EOF, /**/
@@ -277,7 +271,6 @@ coro1(Coro c, void *arg)
 	(void)coro_transfer(c, /**/
 	    (void *)"writer closed, POLLIN|POLLHUP expected");
 
-
 	EV_SET(&kev[0], fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
 	EV_SET(&kev[1], fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
 	if (kevent(kq, kev, 2, NULL, 0, NULL) < 0) {
@@ -302,7 +295,6 @@ coro1(Coro c, void *arg)
 
 	(void)coro_transfer(c, /**/
 	    (void *)"reader reopened");
-
 
 	(void)coro_transfer(c, NULL);
 }
@@ -338,10 +330,8 @@ coro2(Coro c, void *arg)
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE, 0);
 	PRINT_TESTRESULT;
 
-
 	(void)coro_transfer(c, /**/
 	    (void *)"FIFO opened");
-
 
 	if (write(fd, "", 1) != 1) {
 		errx(1, "write failed");
@@ -366,7 +356,6 @@ coro2(Coro c, void *arg)
 	(void)coro_transfer(c, /**/
 	    (void *)"writer closed");
 
-
 	fd = open(FIFONAME, O_WRONLY | O_NONBLOCK | O_CLOEXEC);
 	if (fd < 0) {
 		err(1, "open");
@@ -386,7 +375,6 @@ coro2(Coro c, void *arg)
 	(void)coro_transfer(c, /**/
 	    (void *)"writer reopened");
 
-
 	if (write(fd, "", 1) != 1) {
 		errx(1, "write failed");
 	}
@@ -398,7 +386,6 @@ coro2(Coro c, void *arg)
 
 	(void)coro_transfer(c, /**/
 	    (void *)"one byte written");
-
 
 	EV_SET(&kev[0], fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
 	EV_SET(&kev[1], fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
@@ -430,10 +417,9 @@ coro2(Coro c, void *arg)
 	(void)coro_transfer(c, /**/
 	    (void *)"writer reopened");
 
-
 	pollfd(&r, &r2, fd, kq,
 	    false, /* connecting as a new writer would fail,
-	            * as no readers are currently connected */
+		    * as no readers are currently connected */
 	    0, /**/
 	    1, POLLHUP, 1, EVFILT_WRITE, PIPE_SIZE, EV_EOF, /**/
 	    0, 0, 0, 0, 0, 0);
@@ -441,7 +427,6 @@ coro2(Coro c, void *arg)
 
 	(void)coro_transfer(c, /**/
 	    (void *)"get EOF when reader closes");
-
 
 	pollfd(&r, &r2, fd, kq, true, O_WRONLY, /**/
 	    1, POLLOUT, 1, EVFILT_WRITE, PIPE_SIZE, 0, /**/
@@ -459,7 +444,6 @@ coro2(Coro c, void *arg)
 
 	(void)coro_transfer(c, /**/
 	    (void *)"reconnected reader should trigger notification");
-
 
 	(void)coro_transfer(c, NULL);
 }
