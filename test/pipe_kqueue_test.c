@@ -325,6 +325,31 @@ ATF_TC_BODY(pipe_kqueue__closed_write_end_register_before_close, tc)
 	ATF_REQUIRE(close(p[0]) == 0);
 }
 
+ATF_TC_WITHOUT_HEAD(pipe_kqueue__evfilt_vnode);
+ATF_TC_BODY(pipe_kqueue__evfilt_vnode, tc)
+{
+	int p[2] = { -1, -1 };
+
+	ATF_REQUIRE(pipe2(p, O_CLOEXEC | O_NONBLOCK) == 0);
+	ATF_REQUIRE(p[0] >= 0);
+	ATF_REQUIRE(p[1] >= 0);
+
+	int kq = kqueue();
+	ATF_REQUIRE(kq >= 0);
+
+	/* Trying to register EVFILT_VNODE on a pipe must fail. */
+
+	struct kevent kev;
+	EV_SET(&kev, p[0], EVFILT_VNODE, EV_ADD | EV_CLEAR,
+	    NOTE_DELETE | NOTE_RENAME, 0, 0);
+
+	ATF_REQUIRE_ERRNO(EINVAL, kevent(kq, &kev, 1, NULL, 0, NULL) < 0);
+
+	ATF_REQUIRE(close(kq) == 0);
+	ATF_REQUIRE(close(p[0]) == 0);
+	ATF_REQUIRE(close(p[1]) == 0);
+}
+
 ATF_TP_ADD_TCS(tp)
 {
 	ATF_TP_ADD_TC(tp, pipe_kqueue__write_end);
@@ -332,6 +357,7 @@ ATF_TP_ADD_TCS(tp)
 	ATF_TP_ADD_TC(tp, pipe_kqueue__closed_read_end_register_before_close);
 	ATF_TP_ADD_TC(tp, pipe_kqueue__closed_write_end);
 	ATF_TP_ADD_TC(tp, pipe_kqueue__closed_write_end_register_before_close);
+	ATF_TP_ADD_TC(tp, pipe_kqueue__evfilt_vnode);
 
 	return atf_no_error();
 }

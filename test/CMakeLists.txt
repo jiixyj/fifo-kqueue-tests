@@ -21,4 +21,4 @@ endmacro()
 #
 
 atf_test(pipe_kqueue_test)
-atf_test(fifo_kqueue_test)
+atf_test(fifo_kqueue)

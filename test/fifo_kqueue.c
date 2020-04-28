@@ -389,6 +389,148 @@ ATF_TC_BODY(fifo_kqueue__read_eof_state_when_reconnecting, tc)
 	ATF_REQUIRE(close(p[1]) == 0);
 }
 
+ATF_TC_WITHOUT_HEAD(fifo_kqueue__evfilt_vnode);
+ATF_TC_BODY(fifo_kqueue__evfilt_vnode, tc)
+{
+	int p[2] = { -1, -1 };
+
+	ATF_REQUIRE(mkfifo("testfifo", 0600) == 0);
+
+	ATF_REQUIRE((p[0] = open("testfifo",
+			 O_RDONLY | O_CLOEXEC | O_NONBLOCK)) >= 0);
+
+	int kq = kqueue();
+	ATF_REQUIRE(kq >= 0);
+
+	unsigned int fflags = NOTE_DELETE | NOTE_RENAME | NOTE_WRITE | NOTE_LINK
+#ifdef NOTE_CLOSE
+	    | NOTE_CLOSE
+#endif
+#ifdef NOTE_CLOSE_WRITE
+	    | NOTE_CLOSE_WRITE
+#endif
+#ifdef NOTE_READ
+	    | NOTE_READ
+#endif
+#ifdef NOTE_OPEN
+	    | NOTE_OPEN
+#endif
+	    ;
+
+	struct kevent kev[32];
+	EV_SET(&kev[0], p[0], EVFILT_VNODE, EV_ADD | EV_CLEAR, fflags, 0, 0);
+
+	ATF_REQUIRE(kevent(kq, kev, 1, NULL, 0, NULL) == 0);
+	ATF_REQUIRE(kevent(kq, NULL, 0, kev, nitems(kev),
+			&(struct timespec) { 0, 0 }) == 0);
+
+	int SPURIOUS_EV_ADD = 0
+#ifdef __DragonFly__
+	    | EV_ADD
+#endif
+	    ;
+
+	/* Renaming a FIFO should trigger EVFILT_VNODE/NOTE_RENAMED. */
+
+	ATF_REQUIRE(rename("testfifo", "testfifo_renamed") == 0);
+
+	ATF_REQUIRE(kevent(kq, NULL, 0, kev, nitems(kev),
+			&(struct timespec) { 0, 0 }) == 1);
+	ATF_REQUIRE(kev[0].ident == (uintptr_t)p[0]);
+	ATF_REQUIRE(kev[0].filter == EVFILT_VNODE);
+	ATF_REQUIRE(kev[0].flags == (SPURIOUS_EV_ADD | EV_CLEAR));
+	ATF_REQUIRE(kev[0].fflags == NOTE_RENAME);
+	ATF_REQUIRE(kev[0].data == 0);
+	ATF_REQUIRE(kev[0].udata == 0);
+
+	ATF_REQUIRE((p[1] = open("testfifo_renamed",
+			 O_WRONLY | O_CLOEXEC | O_NONBLOCK)) >= 0);
+
+#ifdef NOTE_OPEN
+	ATF_REQUIRE(kevent(kq, NULL, 0, kev, nitems(kev),
+			&(struct timespec) { 0, 0 }) == 1);
+	ATF_REQUIRE(kev[0].ident == (uintptr_t)p[0]);
+	ATF_REQUIRE(kev[0].filter == EVFILT_VNODE);
+	ATF_REQUIRE(kev[0].flags == (SPURIOUS_EV_ADD | EV_CLEAR));
+	ATF_REQUIRE(kev[0].fflags == NOTE_OPEN);
+	ATF_REQUIRE(kev[0].data == 0);
+	ATF_REQUIRE(kev[0].udata == 0);
+#endif
+
+	/*
+	 * Writing to a FIFO does *not* trigger EVFILT_VNODE/NOTE_WRITE
+	 * currently. This is probably intentional as EVFILT_READ/EVFILT_WRITE
+	 * can be used instead.
+	 */
+
+	char c = 0;
+	ATF_REQUIRE(write(p[1], &c, 1) == 1);
+
+	ATF_REQUIRE(kevent(kq, NULL, 0, kev, nitems(kev),
+			&(struct timespec) { 0, 0 }) == 0);
+
+	/* Similarly, EVFILT_VNODE/NOTE_READ is not triggered on read. */
+
+	ATF_REQUIRE(read(p[0], &c, 1) == 1);
+
+	ATF_REQUIRE(kevent(kq, NULL, 0, kev, nitems(kev),
+			&(struct timespec) { 0, 0 }) == 0);
+
+	ATF_REQUIRE(close(p[1]) == 0);
+
+#ifdef NOTE_CLOSE_WRITE
+	ATF_REQUIRE(kevent(kq, NULL, 0, kev, nitems(kev),
+			&(struct timespec) { 0, 0 }) == 1);
+	ATF_REQUIRE(kev[0].ident == (uintptr_t)p[0]);
+	ATF_REQUIRE(kev[0].filter == EVFILT_VNODE);
+	ATF_REQUIRE(kev[0].flags == (SPURIOUS_EV_ADD | EV_CLEAR));
+	ATF_REQUIRE(kev[0].fflags == NOTE_CLOSE_WRITE);
+	ATF_REQUIRE(kev[0].data == 0);
+	ATF_REQUIRE(kev[0].udata == 0);
+#else
+	ATF_REQUIRE(kevent(kq, NULL, 0, kev, nitems(kev),
+			&(struct timespec) { 0, 0 }) == 0);
+#endif
+
+	ATF_REQUIRE(link("testfifo_renamed", "testfifo_link") == 0);
+
+	ATF_REQUIRE(kevent(kq, NULL, 0, kev, nitems(kev),
+			&(struct timespec) { 0, 0 }) == 1);
+	ATF_REQUIRE(kev[0].ident == (uintptr_t)p[0]);
+	ATF_REQUIRE(kev[0].filter == EVFILT_VNODE);
+	ATF_REQUIRE(kev[0].flags == (SPURIOUS_EV_ADD | EV_CLEAR));
+	ATF_REQUIRE(kev[0].fflags == NOTE_LINK);
+	ATF_REQUIRE(kev[0].data == 0);
+	ATF_REQUIRE(kev[0].udata == 0);
+
+	/* Unlinking a FIFO should trigger EVFILT_VNODE/NOTE_DELETE. */
+
+	ATF_REQUIRE(unlink("testfifo_link") == 0);
+
+	ATF_REQUIRE(kevent(kq, NULL, 0, kev, nitems(kev),
+			&(struct timespec) { 0, 0 }) == 1);
+	ATF_REQUIRE(kev[0].ident == (uintptr_t)p[0]);
+	ATF_REQUIRE(kev[0].filter == EVFILT_VNODE);
+	ATF_REQUIRE(kev[0].flags == (SPURIOUS_EV_ADD | EV_CLEAR));
+	ATF_REQUIRE(kev[0].fflags == NOTE_DELETE);
+	ATF_REQUIRE(kev[0].data == 0);
+	ATF_REQUIRE(kev[0].udata == 0);
+
+	ATF_REQUIRE(unlink("testfifo_renamed") == 0);
+
+	ATF_REQUIRE(kevent(kq, NULL, 0, kev, nitems(kev),
+			&(struct timespec) { 0, 0 }) == 1);
+	ATF_REQUIRE(kev[0].ident == (uintptr_t)p[0]);
+	ATF_REQUIRE(kev[0].filter == EVFILT_VNODE);
+	ATF_REQUIRE(kev[0].flags == (SPURIOUS_EV_ADD | EV_CLEAR));
+	ATF_REQUIRE(kev[0].fflags == NOTE_DELETE);
+	ATF_REQUIRE(kev[0].data == 0);
+	ATF_REQUIRE(kev[0].udata == 0);
+
+	ATF_REQUIRE(close(kq) == 0);
+	ATF_REQUIRE(close(p[0]) == 0);
+}
+
 ATF_TP_ADD_TCS(tp)
 {
 	ATF_TP_ADD_TC(tp, fifo_kqueue__writes);
@@ -396,6 +538,7 @@ ATF_TP_ADD_TCS(tp)
 	ATF_TP_ADD_TC(tp, fifo_kqueue__reads);
 	ATF_TP_ADD_TC(tp, fifo_kqueue__read_eof_wakeups);
 	ATF_TP_ADD_TC(tp, fifo_kqueue__read_eof_state_when_reconnecting);
+	ATF_TP_ADD_TC(tp, fifo_kqueue__evfilt_vnode);
 
 	return atf_no_error();
 }
